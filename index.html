@@ -111,6 +111,7 @@
 
       if (error) {
         document.getElementById("error-message").textContent = error.message;
+        return;
       } else {
         document.getElementById("payment-form").style.display = "none";
         document.getElementById("success-message").style.display = "block";
