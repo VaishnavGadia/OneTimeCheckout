@@ -114,6 +114,18 @@
 
       if (error) {
         document.getElementById("error-message").textContent = error.message;
+
+      // ❌ Notify FlutterFlow of payment failure
+    const payload = {
+      type: 'VERIFY_RESULT',
+      success: false,
+      message: error.message || 'Payment failed or was cancelled'
+    };
+    if (typeof FlutterFlowChannel !== 'undefined') {
+      FlutterFlowChannel.postMessage(JSON.stringify(payload));
+    }
+    window.parent?.postMessage(payload, '*');
+        
       } else {
         document.getElementById("payment-form").style.display = "none";
         document.getElementById("success-message").style.display = "block";
