@@ -47,6 +47,26 @@
       window.parent?.postMessage(payload, '*');
     }
 
+
+
+
+    
+    window.addEventListener("message", async (event) => {
+  const data = event.data;
+  if (data?.type === "TOKEN") {
+    accessToken = data.token;
+    deliveryDate = data.delivery_date;
+    sessionStorage.setItem("jwtToken", accessToken); // ✅ store it for checkout-complete.html
+    console.log("Received token and delivery_date", accessToken, deliveryDate);
+    if (accessToken && deliveryDate) {
+      await initializeCheckout();
+    }
+  }
+});
+
+
+    
+
     async function initializeCheckout() {
       try {
         const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-one-time-payment-intent", {
