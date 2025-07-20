@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>One-Time Checkout</title>
   <script src="https://js.stripe.com/v3/"></script>
+  <meta http-equiv="Permissions-Policy" content="payment=*" />
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -48,6 +49,7 @@
     }
 
     async function initializeCheckout() {
+      console.log("🟡 Initializing checkout...");
       try {
         const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-one-time-payment-intent", {
           method: "POST",
@@ -59,6 +61,7 @@
         });
 
         const { clientSecret, publishableKey, error } = await res.json();
+        console.log("🔵 Payment Intent Response:", { clientSecret, publishableKey, error });
 
         if (error || !clientSecret || !publishableKey) {
           document.getElementById("error-message").textContent = error || "Failed to initialize payment";
@@ -71,10 +74,12 @@
           fetchClientSecret: () => clientSecret
         });
 
+        console.log("🟢 Mounting Stripe Embedded Checkout...");
         checkout.mount("#checkout");
+        console.log("✅ Checkout UI mounted");
       } catch (err) {
-        console.error("Checkout error:", err);
-        document.getElementById("error-message").textContent = "Unexpected error during checkout";
+        console.error("❌ Error initializing checkout:", err);
+        document.getElementById("error-message").textContent = "Unexpected error during checkout.";
         sendResult(false, "Unexpected error during checkout");
       }
     }
@@ -82,10 +87,17 @@
     async function handleRedirectResult() {
       const urlParams = new URLSearchParams(window.location.search);
       const payment_intent_id = urlParams.get("payment_intent");
-      if (!payment_intent_id) return;
+
+      if (!payment_intent_id) {
+        console.log("ℹ️ No redirect result to process.");
+        return;
+      }
+
+      console.log("🔄 Detected redirect with payment_intent:", payment_intent_id);
 
       const token = sessionStorage.getItem("jwtToken");
       if (!token) {
+        console.error("❌ Missing session token after redirect");
         document.getElementById("error-message").textContent = "Missing session (JWT) token. Please try again.";
         sendResult(false, "Missing session token");
         return;
@@ -102,6 +114,8 @@
         });
 
         const result = await confirmRes.json();
+        console.log("🟣 Order confirmation response:", result);
+
         if (!confirmRes.ok) {
           document.getElementById("error-message").textContent = result.error || "Failed to complete order";
           sendResult(false, result.error || "Order completion failed");
@@ -111,31 +125,32 @@
         document.getElementById("success-message").style.display = "block";
         sendResult(true, "One-time payment successful");
       } catch (err) {
-        console.error("Order confirmation error:", err);
+        console.error("❌ Error confirming payment:", err);
         document.getElementById("error-message").textContent = "Unexpected error confirming payment.";
         sendResult(false, "Unexpected error");
       }
     }
 
-    // Listen for FlutterFlow token
+    // Handle token from FlutterFlow
     window.addEventListener("message", async (event) => {
       const data = event.data;
       if (data?.type === "TOKEN") {
         accessToken = data.token;
         deliveryDate = data.delivery_date;
-        sessionStorage.setItem("jwtToken", accessToken);
-        console.log("Received token and delivery_date", accessToken, deliveryDate);
+        console.log("📨 Received token and delivery_date", accessToken, deliveryDate);
         if (accessToken && deliveryDate) {
+          sessionStorage.setItem("jwtToken", accessToken);
           await initializeCheckout();
         }
       }
     });
 
-    // Always check for redirect result on load
+    // Always try to complete redirect on load
     handleRedirectResult();
   </script>
 </body>
 </html>
+
 
 
 
