@@ -47,26 +47,6 @@
       window.parent?.postMessage(payload, '*');
     }
 
-
-
-
-    
-    window.addEventListener("message", async (event) => {
-  const data = event.data;
-  if (data?.type === "TOKEN") {
-    accessToken = data.token;
-    deliveryDate = data.delivery_date;
-    sessionStorage.setItem("jwtToken", accessToken); // ✅ store it for checkout-complete.html
-    console.log("Received token and delivery_date", accessToken, deliveryDate);
-    if (accessToken && deliveryDate) {
-      await initializeCheckout();
-    }
-  }
-});
-
-
-    
-
     async function initializeCheckout() {
       try {
         const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-one-time-payment-intent", {
@@ -92,32 +72,6 @@
         });
 
         checkout.mount("#checkout");
-
-        // Handle session completion via return_url redirect
-        const urlParams = new URLSearchParams(window.location.search);
-        const payment_intent_id = urlParams.get("payment_intent");
-
-        if (payment_intent_id) {
-          const confirmRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/complete-one-time-order", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ payment_intent_id })
-          });
-
-          const result = await confirmRes.json();
-          if (!confirmRes.ok) {
-            document.getElementById("error-message").textContent = result.error || "Failed to complete order";
-            sendResult(false, result.error || "Order completion failed");
-            return;
-          }
-
-          document.getElementById("success-message").style.display = "block";
-          sendResult(true, "One-time payment successful");
-        }
-
       } catch (err) {
         console.error("Checkout error:", err);
         document.getElementById("error-message").textContent = "Unexpected error during checkout";
@@ -125,18 +79,60 @@
       }
     }
 
-    // Wait for FlutterFlow message
+    async function handleRedirectResult() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const payment_intent_id = urlParams.get("payment_intent");
+      if (!payment_intent_id) return;
+
+      const token = sessionStorage.getItem("jwtToken");
+      if (!token) {
+        document.getElementById("error-message").textContent = "Missing session (JWT) token. Please try again.";
+        sendResult(false, "Missing session token");
+        return;
+      }
+
+      try {
+        const confirmRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/complete-one-time-order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ payment_intent_id })
+        });
+
+        const result = await confirmRes.json();
+        if (!confirmRes.ok) {
+          document.getElementById("error-message").textContent = result.error || "Failed to complete order";
+          sendResult(false, result.error || "Order completion failed");
+          return;
+        }
+
+        document.getElementById("success-message").style.display = "block";
+        sendResult(true, "One-time payment successful");
+      } catch (err) {
+        console.error("Order confirmation error:", err);
+        document.getElementById("error-message").textContent = "Unexpected error confirming payment.";
+        sendResult(false, "Unexpected error");
+      }
+    }
+
+    // Listen for FlutterFlow token
     window.addEventListener("message", async (event) => {
       const data = event.data;
       if (data?.type === "TOKEN") {
         accessToken = data.token;
         deliveryDate = data.delivery_date;
+        sessionStorage.setItem("jwtToken", accessToken);
         console.log("Received token and delivery_date", accessToken, deliveryDate);
         if (accessToken && deliveryDate) {
           await initializeCheckout();
         }
       }
     });
+
+    // Always check for redirect result on load
+    handleRedirectResult();
   </script>
 </body>
 </html>
