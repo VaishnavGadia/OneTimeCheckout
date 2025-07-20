@@ -3,6 +3,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>One-Time Checkout</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2rem;
+      background-color: #f9f9f9;
+    }
+    #checkout {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    #success-message {
+      display: none;
+      color: green;
+      font-weight: bold;
+      text-align: center;
+      margin-top: 1rem;
+    }
+    #error-message {
+      color: red;
+      text-align: center;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <h2>Complete Your Order</h2>
+  <div id="checkout"></div>
+  <div id="success-message">🎉 Payment Successful!</div>
+  <div id="error-message"></div>
+
+  <script type="module">
+    let accessToken = null;
+    let deliveryDate = null;
+
+    function sendResult(success, message) {
+      const payload = { type: 'VERIFY_RESULT', success, message };
+      if (typeof FlutterFlowChannel !== 'undefined') {
+        FlutterFlowChannel.postMessage(JSON.stringify(payload));
+      }
+      window.parent?.postMessage(payload, '*');
+    }
+
+    async function initializeCheckout() {
+      try {
+        const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-one-time-payment-intent", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ delivery_date: deliveryDate })
+        });
+
+        const { clientSecret, publishableKey, error } = await res.json();
+
+        if (error || !clientSecret || !publishableKey) {
+          document.getElementById("error-message").textContent = error || "Failed to initialize payment";
+          sendResult(false, error || "Failed to initialize payment");
+          return;
+        }
+
+        const stripe = Stripe(publishableKey);
+        const checkout = await stripe.initEmbeddedCheckout({
+          fetchClientSecret: () => clientSecret
+        });
+
+        checkout.mount("#checkout");
+
+        // Handle session completion via return_url redirect
+        const urlParams = new URLSearchParams(window.location.search);
+        const payment_intent_id = urlParams.get("payment_intent");
+
+        if (payment_intent_id) {
+          const confirmRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/complete-one-time-order", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ payment_intent_id })
+          });
+
+          const result = await confirmRes.json();
+          if (!confirmRes.ok) {
+            document.getElementById("error-message").textContent = result.error || "Failed to complete order";
+            sendResult(false, result.error || "Order completion failed");
+            return;
+          }
+
+          document.getElementById("success-message").style.display = "block";
+          sendResult(true, "One-time payment successful");
+        }
+
+      } catch (err) {
+        console.error("Checkout error:", err);
+        document.getElementById("error-message").textContent = "Unexpected error during checkout";
+        sendResult(false, "Unexpected error during checkout");
+      }
+    }
+
+    // Wait for FlutterFlow message
+    window.addEventListener("message", async (event) => {
+      const data = event.data;
+      if (data?.type === "TOKEN") {
+        accessToken = data.token;
+        deliveryDate = data.delivery_date;
+        console.log("Received token and delivery_date", accessToken, deliveryDate);
+        if (accessToken && deliveryDate) {
+          await initializeCheckout();
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta http-equiv="Permissions-Policy" content="payment=('*')">
   <title>One-Time Checkout</title>
   <script src="https://js.stripe.com/v3/"></script>
@@ -167,3 +294,4 @@
   </script>
 </body>
 </html>
+ -->
