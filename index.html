@@ -127,6 +127,16 @@
           },
           body: JSON.stringify({ clientSecret })
         });
+        // 🔔 Notify FlutterFlow
+const payload = {
+  type: 'VERIFY_RESULT',
+  success: true,
+  message: 'One-time payment successful'
+};
+if (typeof FlutterFlowChannel !== 'undefined') {
+  FlutterFlowChannel.postMessage(JSON.stringify(payload));
+}
+window.parent?.postMessage(payload, '*');
       }
     });
   </script>
