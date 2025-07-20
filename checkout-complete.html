@@ -1,6 +1,102 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Completing Order</title>
+    <style>
+      body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #fff; text-align: center; }
+      .container { padding: 2rem; }
+      .message { font-size: 1.2rem; color: #333; }
+      .success { color: #22c55e; }
+      .error { color: #ef4444; }
+    </style>
+</head>
+<body>
+  <div class="container">
+      <h2 id="status-heading" class="message">Processing your payment...</h2>
+      <p id="status-message" class="message"></p>
+  </div>
+
+<script>
+  // Function to send the final result back to FlutterFlow
+  function sendResult(success, message) {
+    const payload = { type: 'VERIFY_RESULT', success, message };
+    // For mobile (Android/iOS)
+    if (window.FlutterFlowChannel) {
+      FlutterFlowChannel.postMessage(JSON.stringify(payload));
+    }
+    // For web
+    window.parent?.postMessage(payload, '*');
+  }
+  
+  // This function runs automatically when the page loads
+  async function handleCompletion() {
+    const heading = document.getElementById("status-heading");
+    const messageEl = document.getElementById("status-message");
+
+    try {
+      // We don't need the session_id from the URL, but its presence confirms the redirect.
+      const sessionId = new URLSearchParams(window.location.search).get("session_id");
+      if (!sessionId) {
+        throw new Error("Stripe session ID not found in URL.");
+      }
+
+      // Retrieve the JWT and paymentIntentId from sessionStorage
+      const token = sessionStorage.getItem("jwtToken");
+      const paymentIntentId = sessionStorage.getItem("paymentIntentId");
+
+      if (!token || !paymentIntentId) {
+        throw new Error("Session data missing. Could not complete order.");
+      }
+
+      // Call the backend function to verify payment and update the order
+      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/complete-one-time-payment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ payment_intent_id: paymentIntentId }),
+      });
+
+      const result = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(result.error || "Failed to confirm order.");
+      }
+      
+      // Success!
+      heading.textContent = "🎉 Payment Successful!";
+      heading.classList.add("success");
+      messageEl.textContent = "Your order has been received.";
+      sendResult(true, "Payment successful");
+
+    } catch (err) {
+      // Failure
+      heading.textContent = "Payment Failed";
+      heading.classList.add("error");
+      messageEl.textContent = err.message;
+      sendResult(false, err.message);
+    } finally {
+      // Clean up session storage to prevent reuse
+      sessionStorage.removeItem("jwtToken");
+      sessionStorage.removeItem("paymentIntentId");
+    }
+  }
+
+  // Run the completion logic as soon as the page is loaded
+  handleCompletion();
+</script>
+</body>
+</html>
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
   <meta charset="UTF-8" />
   <title>Checkout Complete</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -20,4 +116,4 @@
   <!-- Minimal stub: used as a harmless redirect target -->
   <div>✅ Redirected back safely.</div>
 </body>
-</html>
+</html> -->
