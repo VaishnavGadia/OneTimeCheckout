@@ -36,7 +36,7 @@
   <div id="success-message">🎉 Payment Successful!</div>
   <div id="error-message"></div>
 
-  <script type="module">
+<!--   <script type="module">
     let accessToken = null;
     let deliveryDate = null;
 
@@ -147,7 +147,127 @@
 
     // Always try to complete redirect on load
     handleRedirectResult();
-  </script>
+  </script> -->
+
+
+  <script type="module">
+  let accessToken = null;
+  let deliveryDate = null;
+
+  function sendResult(success, message) {
+    console.log("🕹 sendResult →", success, message);
+    const payload = { type: 'VERIFY_RESULT', success, message };
+    if (typeof FlutterFlowChannel !== 'undefined') {
+      FlutterFlowChannel.postMessage(JSON.stringify(payload));
+    }
+    window.parent?.postMessage(payload, '*');
+  }
+
+  async function initializeCheckout() {
+    console.log("1️⃣ initializeCheckout() called");
+
+    try {
+      console.log("2️⃣ Fetching payment intent...");
+      const res = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/create-one-time-payment-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ delivery_date: deliveryDate })
+      });
+
+      console.log("3️⃣ Intent request responded:", res.status);
+      const body = await res.json();
+      console.log("4️⃣ Intent response body:", body);
+
+      const { clientSecret, publishableKey, error } = body;
+      if (error || !clientSecret || !publishableKey) {
+        console.log("⚠️ Missing keys:", error);
+        document.getElementById("error-message").textContent = error || "Init failed";
+        sendResult(false, error || "Init failed");
+        return;
+      }
+
+      console.log("5️⃣ Initializing Stripe Embedded Checkout...");
+      const stripe = Stripe(publishableKey);
+      const checkout = await stripe.initEmbeddedCheckout({
+        fetchClientSecret: () => clientSecret
+      });
+
+      console.log("6️⃣ Mounting checkout UI...");
+      checkout.mount("#checkout");
+      console.log("7️⃣ Checkout UI mounted");
+
+    } catch (err) {
+      console.error("❌ initializeCheckout error:", err);
+      document.getElementById("error-message").textContent = "Checkout init error";
+      sendResult(false, "Checkout init error");
+    }
+  }
+
+  async function handleRedirectResult() {
+    console.log("🚦 handleRedirectResult called");
+    const payment_intent_id = new URLSearchParams(window.location.search).get("payment_intent");
+    console.log("🔍 payment_intent_id:", payment_intent_id);
+    if (!payment_intent_id) return;
+
+    const token = sessionStorage.getItem("jwtToken");
+    console.log("🔑 session token:", token);
+    if (!token) {
+      sendResult(false, "Missing session token");
+      return;
+    }
+
+    try {
+      const confirmRes = await fetch("https://jtrenbwpefzevqlkcfly.supabase.co/functions/v1/complete-one-time-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ payment_intent_id })
+      });
+
+      console.log("📤 confirm-order fetch status:", confirmRes.status);
+      const result = await confirmRes.json();
+      console.log("📦 confirm-order response:", result);
+
+      if (!confirmRes.ok) {
+        sendResult(false, result.error || "Order failed");
+        return;
+      }
+
+      document.getElementById("success-message").style.display = "block";
+      sendResult(true, "Payment success");
+
+    } catch (err) {
+      console.error("❌ complete-order error:", err);
+      sendResult(false, "complete-order exception");
+    }
+  }
+
+  window.addEventListener("message", async (event) => {
+    console.log("📬 Received message:", event.data);
+
+    if (event.data?.type === "TOKEN") {
+      accessToken = event.data.token;
+      deliveryDate = event.data.delivery_date;
+      console.log("🎟 Got token:", accessToken, "delivery:", deliveryDate);
+      sessionStorage.setItem("jwtToken", accessToken);
+      if (accessToken && deliveryDate) {
+        await initializeCheckout();
+      }
+    }
+  });
+
+  // Always run redirect check on load
+  handleRedirectResult();
+</script>
+
+
+
+  
 </body>
 </html>
 
