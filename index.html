@@ -44,6 +44,10 @@
 
       console.log("2️⃣ Intent request responded:", res.status);
       const body = await res.json();
+
+      // Log the entire body for debugging
+      console.log("🔍 Response Body:", body);
+      
       if (!res.ok || body.error) {
         throw new Error(body.error || `Request failed with status ${res.status}`);
       }
